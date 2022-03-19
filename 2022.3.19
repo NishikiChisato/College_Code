@@ -15,3 +15,8 @@ int countOdds(int low, int high)//区间0到x内的奇数个数为per(x)
     {
         return (per(high) - per(low - 1));
     }
+//一行代码实现斐波那契数列
+int fib(int x)
+{
+    return x <= 1 ? 1 : fib(x - 1) + fib(x - 2);
+}
