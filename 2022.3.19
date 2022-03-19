@@ -1,0 +1,7 @@
+int countOdds(int low, int high)//求出区间内的奇数
+    {
+        if(low&1)
+            return (high - low) / 2 + 1;
+        else
+            return (high - low + 1 ) / 2;
+    }
