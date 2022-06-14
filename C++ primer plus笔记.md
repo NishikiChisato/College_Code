@@ -23,3 +23,15 @@ void say_hi(...);
 ```
 
 通常，仅当与接受可变参数的C函数（如printf)交互时才需要这么做
+
+### 指针和const
+
+如果数据类型本身不是指针，则可以将const数据或非const数据的**地址**赋值给被const修饰的指针，只能将非const数据的地址赋值给非const指针（不能将const数据的地址赋值给非const修饰的指针，这会使得const的状态很荒谬）
+
+```cpp
+    const int a = 10;
+    int* pa = &a;//INVAILD
+```
+
+如果数据类型本身是指针，则可以将非const数据的地址赋值给const或非const修饰的指针，只能将const数据的地址赋值给const指针（不允许将const数据的地址赋值给非const修饰的指针，这一点与上面一致）
+
