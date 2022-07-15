@@ -1284,3 +1284,105 @@ Derived& Derived::operator=(const Derived& rhs)
 
 # 16.以对象管理资源
 
+
+
+我们来考虑一个类：
+
+```cpp
+class JK
+{
+public:
+	JK()
+	{
+		cout << "Default" << endl;
+	}
+	~JK()
+	{
+		cout << "~Constructor" << endl;
+	}
+	void Pirnt()
+	{
+		cout << "233" << endl;
+	}
+};
+```
+
+通常，我们会用一个 *`Factory Function`* 来获取一个对象，即：
+
+```cpp
+JK* createJK() // Factury Function 
+{
+	JK* ptr = new JK();
+	return ptr;
+}
+```
+
+假设我们在某个函数当中需要用到该对象，我们可以这么写：
+
+```cpp
+void fun()
+{
+	JK* ptr1 = createJK();
+	//...
+	delete ptr1;
+}
+```
+
+**我们总会在 return 前就将该指针析构掉**，但问题是，当代码进入日常维护时， "..." 部分的代码可能会有所更改，比如新添加一个 `return` 什么的。不管加了什么，如果导致**「当控制流离开这个函数或者区块时资源没有被释放」**，就会出现危险。
+
+也就是说，在这里我们需要一种**「能够在程序执行完函数或代码块就自动析构掉资源」**的工具。十分幸运的是，C++提供了智能指针这个工具能够实现这一点。
+
+```cpp
+void fun()
+{
+	auto_ptr<JK>ptr1(createJK()); //这玩意是一个类模板，需要通过初始化来调用其内部函数
+	//...
+}
+```
+
+这里体现了「以对象管理资源」的两个特点：
+
+* 获得资源（`new` 结束后）后立即放入管理对象（`auto_ptr`）
+* 该管理对象运用析构函数使得该对象得以被释放
+
+这里有一个问题是：`auto_ptr` 会在程序结束时自动调用析构函数来销毁掉对象，但如果多个 `auto_ptr` 指向同一个对象的话，你的对象就会被删除多次。「未定义行为」的列车将一去不复返。
+
+为了解决这个问题， `auto_ptr` 不允许两个指针指向同一块内存地址，即**试图通过 *copy* 构造函数或 *copy assignment* 操作符复制它们，它们将会变为 NULL ，而复制所得的指针将用于该资源的唯一所有权** 。
+
+```cpp
+auto_ptr<JK> ptr1(createJK());
+auto_ptr<JK> ptr2(ptr1);// ptr2 指向对象, ptr1 为 NULL
+ptr1 = ptr2;// ptr1 指向对象, ptr2 为 NULL
+```
+
+因为这种特性，这会导致**受 auto_ptr 所指的资源不会有一个以上的 auto_ptr 同时指向它**。因为此特性，STL 当中的容器容不得 `auto_ptr` 。
+
+`auto_ptr` 的替代方案是「引用计数型智能指针（RCSP）」。RCSP 指针可以持续跟踪共有多少个对象同时指向该资源，并在无人指向该资源时自动删除。但 RCSP 无法打破环状引用，即两个已经没有被使用的对象互指。
+
+TR1 当中的 `tr1::shared_ptr` 就是一个 RCSP ，即上面的 fun 也可以这么写：
+
+```cpp
+void fun()
+{
+	tr1::shared_ptr<JK>ptr1(createJK());
+}
+```
+
+该指针允许相互赋值，即：
+
+```cpp
+tr1::shared_ptr<JK>ptr1(createJK());
+
+tr1::shared_ptr<JK> ptr2(ptr1);//ptr1 与 ptr2 均指向同一对象
+```
+
+显然，`tr1::shared_ptr` 的这种特性可以被用于 STL 或者任何「auto_ptr 的非传统赋值不适用」的情况下。
+
+`auto_ptr` 和 `tr1::shared_ptr` **两者在其析构函数内执行的是 `delete` 动作而不是 `delete []` 的动作**，**这意味着在二者身上分配 `array` 是一种不合适的行为**。
+
+看到这里你会想，为什么没有针对 C++ 动态数组而设计的智能指针呢？
+
+啊，实际上 vector 和 string 可以完美替代掉动态数组这么个东西，因此 C++ 没有！！！（这个理由是我见过最牛逼的）
+
+
+
