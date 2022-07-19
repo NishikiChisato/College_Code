@@ -1487,3 +1487,104 @@ fun(tr1::shared_ptr<Test>(new Test), Priority());
 **但是，对于调用 `Priority` 的次序则没有规定**。这个函数的调用，**可以在第一个，可以是第二个，可以是第三个**，这一切取决于编译器。
 
 如果，`Priority` 是在第二个调用的，也就是说**这时 `Test` 对象已经生成好了**。如果在 `Priority` 内部抛出异常导致程序终止，**那么已经生成的对象就会导致内存泄漏**。这是因为**资源被创建**与**资源被放进管理对象**这两件事并不是在同一时间内完成的。
+
+
+
+# 21.宁以 Pass-by-reference-to-const 替换掉 Pass-by-value
+
+
+
+对于自定义类型而言，*pass by value* 的成本往往高于 *pass by reference* ，具体我们看下面这个例子：
+```cpp
+class Person
+{
+public:
+	Person();
+	Person(const string& rhs, const string& chs);
+	~Person();
+private:
+	string name;
+	string adress;
+};
+class Student : public Person
+{
+public:
+	Student();
+	Student(const string& rhs, const string& chs);
+	~Student();
+private:
+	string schoolname;
+	string schooladress;
+};
+```
+
+假设我们有一个函数，其声明为 `void fun(Student s)` ，当我写出：
+
+```cpp
+Student stu;
+fun(stu);
+```
+
+该函数的形参是 `s` ，当该函数被调用时，**`Student` 的 *copy* 构造函数会被调用，它会以 `stu` 为蓝本复制一份给形参 `s` **，相应地，该函数结束时 `s` 会被销毁。因此总的调用成本是：一次 `Student` 的 *copy* 构造函数调用和一次 `Student` 的析构函数调用。
+
+嘛从宏观上看是这样，但我们要知道，`Student` 是继承自 `Person` ，并且 *derived class* 当中有两个 `string` 对象，*base class* 当中也有两个 `string` 对象。
+
+所以，总的调用应该是：一对 `Student` 的 *copy* 构造函数调用和析构函数调用，一对 `Person` 的 *copy* 构造函数调用和析构函数调用以及四个 `string` 对象的 *copy* 构造函数调用和析构函数调用。总共调用了 6 个构造函数和析构函数。
+
+当然，我们也有办法能够回避掉这些函数的调用，那就是用 `pass by reference` 。当然，你会选择 `pass by value` 的一个很重要的原因可能是：你不想该函数改变我原本对象的值。当然，这一点也可以得到解决，就是 `pass by reference to const` ，即：
+
+```cpp
+void fun(const Student& s);
+```
+
+这样便不会有那么多次的构造函数调用和析构函数调用。
+
+除此之外，`pass by reference to const` 也可以很好地避免**对象切割**的问题。还是上面那个例子，但我们加两行代码：
+
+```cpp
+class Person
+{
+public:
+	Person();
+	Person(const string& rhs, const string& chs);
+	virtual ~Person();//bass class 一定要写 virtual
+    
+    vertual dosomething();//虚函数，用于提供接口
+private:
+	string name;
+	string adress;
+};
+class Student : public Person
+{
+public:
+	Student();
+	Student(const string& rhs, const string& chs);
+	~Student();
+    
+    dosomething();
+private:
+	string schoolname;
+	string schooladress;
+};
+```
+
+假定我们有一个函数，它**接受一个 *bass class* 对象为参数（并且是 `pass by value`）**，但我传入一个 *derived class* 对象，即：
+
+```cpp
+void fun(Person p);
+Student stu;
+fun(stu);
+```
+
+当一个 ***derived class* 对象**以**值传递**的方式传递给一个**接受 *bass class* 对象**的函数时，***base class* 的 *copy* 构造函数会被调用**（还记得吗，*base class* 形参也愿意接受一个 *derived class* 的实参），这将会使得**「 *derived class*  当中那些区别于 *base class* 的那些特质」**全部被切割掉。
+
+我们具体说明一下：
+
+`fun` 函数的形参是一个 `Person` 类型，当传入 *derived class* 对象时，会调用 *base class* 的 *copy* 构造函数，最终得到的是一个 ***base class* 对象**而不是 *derived class* 对象。也就是说，当我试图在此函数中调用 *derived class* 当中虚函数的接口时，**实际调用的是 *base class* 当中该函数的定义而不是 *derived class* 当中该函数的定义**。这才是关键！！！
+
+也就是说，这里的 *base class* 是不能提供 pure virtual 函数的，因为这个函数在 *base class* 当中并没有定义，就算你给一份缺省定义也没有，因为 pure virtual 函数不能实例化对象。
+
+所以，必须把 `fun(Person p)` 改为 `fun(const Person& p)` 才行，**这样传进来的是什么类型，那么 `p` 就表示什么类型**。
+
+
+
