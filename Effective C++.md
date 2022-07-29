@@ -1902,7 +1902,139 @@ size 函数**只需要返回一个类型为 x 的对象**，这个 x 可以是�
 
 同样， T 并不需要提供 `operator!=` 的接口，`operator!=` 这个函数只需要接受一个类型为 x 的对象和一个类型为 y 的对象，只要 T 可以被隐式转换成 x 而 otherValue 可以被隐式转换成 y 就行。
 
-因此，这种隐式接口的表达式仅仅**由一组有效表达式构成**（看上去很简单。
+因此，这种隐式接口的表达式仅仅**由一组有效表达式构成**。
 
 
+
+# 29.了解 typename 的双重意义
+
+
+
+提一个问题：
+
+```cpp
+template<typename T> class tp{};
+template<class T> class tp{};
+```
+
+这当中的 `typename` 和 `class` 有何不同？
+
+答案是，没有任何不同。是的，没有任何不同。在这种情况下二者完全一样。
+
+然而，C++ 并不总将 `typename` 与 `class` 视为等价，具体看下面这个例子：
+
+```cpp
+template<typename C>
+void fun(const C& container)
+{
+    C::const_iterator iter = container.begin();
+    int value = *iter;
+}
+```
+
+我们的想法是：定义一个迭代器 `iter` 并将它赋值为传进来的容器的起始位置，将此迭代器的值赋值给一个 `int` 类型的变量
+
+这个函数当中，存在两个 `local` 变量：`iter` 和 `value` 。
+
+`iter` 的类型为 `C::iterator` ，实际的类型必须由模板参数 C 来进行确定。因此我们说：**模板内如果出现的名称相依于某个模板参数的话，该名称称之为从属名称**。**如果从属名称在 class 内程嵌套状，则称为嵌套从属名称**（这里的类型 `C::iterator` 属于一个类当中的嵌套类型，而用此类型定义的名称称为从属名称，合起来就是嵌套从属名称）。
+
+另外一个 `local` 变量 value 的类型是 `int` ，**不依赖于模板参数类型**，因此它是**非从属名称**。
+
+嵌套从属名称会导致编译器解析困难，我们假定在函数中有如下代码：
+
+```cpp
+template<typename C>
+void fun(const C& container)
+{
+    C::const_iterator* iter;
+}
+```
+
+编译器在这里会有两种解释：
+
+1. 认为 `C::const_iterator` 是一个嵌套从属类型，那么这里就是在声明一个指针。
+2. 认为 `C::const_iterator` 是一个**类当中定义的 `static` 类型的变量**（这么想是合法的，因为 `static` 类型的变量可以直接通过类名来访问）而 `iter` 可以是一个**全局变量**，那么这里编译器会认为这是在将两个变量**做乘法**。
+
+这里便出现了歧义，原因在于：在不能确定模板参数是什么的情况下，没有任何办法知道 `C::const_iterator` 是否是一个类型。
+
+当然，C++ 有一个规则来解析这个问题：如果解析器在模板中遭遇一个嵌套从属名称，那么它将假设该名称不是类型，除非你告诉它。即**在缺省状态下，嵌套从属名称不是类型**。
+
+因此在默认状态下，`C::iterator iter` **不是合法的代码**。**如果我们想告诉编译器嵌套从属名称是一个类型，只需要在前面加上 `typename` 即可**。
+
+我们来看下面这个例子：模板函数接受一个容器和一个指向容器的迭代器
+
+```cpp
+template<typename C>//模板声明
+void fun(const C& container,              //不允许加 typename
+        typename C::const_iterator& iter);//必须要加 typename
+```
+
+这个例子说明了：只要在需要确定一个嵌套从属名称为类型的时候才允许使用 `typename` 。即 **`typename` 必须作为嵌套从属名称的前缀词**。
+
+当然，「`typename` 必须作为嵌套从属名称的前缀词」是有例外的，这一例外规则是**「`typename` 不可以出现在 base class list 内的嵌套从属名称前面，也不允许出现在初始化列表的嵌套从属名称前面」**，即：
+
+```cpp
+template<typename T>
+class Derived : public Base<T>::Nested //这里属于 base class list ，这里的嵌套从属名称前面不允许加 typename
+{
+public:
+    explicit Derived(int x)
+        : Base<T>::Nested(x) //构造函数的初始化列表当中的嵌套类型前也不允许加上 typename
+        {
+            typename Base<T>::Nested x;//嵌套从属名称前面必须要加上 typename
+        }
+    
+}
+```
+
+其实这里也很容易理解，毕竟在 base class list （基类列表）和初始化列表当中的嵌套类型不可能会是一个类当中的静态成员变量。
+
+我们最后再看一个 `typename` 例子，这将会发生在真实程序当中。
+
+假设我们需要写一个模板函数，该函数接受一个迭代器，而我们打算为该迭代器指涉的对象做一份 `local` 复件 temp （也就是将这个指针所指向的对象做一份拷贝）。我们可以这么写：
+
+```cpp
+template<typename iterT>
+void fun(iterT iter)
+{
+	typename std::iterator_traits<iterT>::value_type temp(*iter);
+}
+```
+
+别被 `std::iterator_traits<iterT>::value_type` 给吓到了，它只不过是标准 traits class 的运用而已，相当于在说：「类型为 `iterT` 的对象所指之物的」类型。
+
+也就是说，这里会将 temp 的类型声明为**「`iterT` 类型的迭代器所指向对象的类型」**（是指针指向对象的类型），之后再对 temp 进行赋值，就可以得到此迭代器指涉对象的一份拷贝（如果 `iterT` 的类型为 `vector<int>::iterator` ，那么 temp 的类型就是 `int` ；如果 `iterT` 的类型为 `stack<string>::iterator` ，那么 temp 的类型为 `string`）。
+
+当然，这玩意是个嵌套从属类型，需要在前面加上 `typename` 。
+
+当然，每次打那么长也会觉得很不舒服，因此我们可以使用 `typedef` 来简化：
+
+```cpp
+template<typename iterT>
+void fun(iterT iter)
+{
+	typedef typename std::iterator_traits<iterT>::value_type value_type;
+	value_type temp(*iter);
+}
+```
+
+这么做也是合法的，**不过要记得加上 `typename`** 。
+
+
+
+# 30.绝不从新定义继承而来的缺省参数值
+
+
+
+这里我们只把理解说一下，具体的例子去看书
+
+我们先来讨论静态类型和动态类型
+
+对象的静态类型就是它在程序中**被声明时所采用的类型**，而动态类型则是「目前对象所指的类型」（这里默认对象是指针了）
+
+我们在基类当中写一个 virtual 函数，然后这个函数存在一个默认值。如果派生类重写这个函数的时候修改了这个默认值，就会出现一些问题
+
+我们通常会用基类指针来指涉派生类对象，由于 virtual 函数的默认参数是静态绑定的，而 virtual 函数则是动态绑定的，因此我在用基类指针调用派生类对象的 virtual 函数时，派生类的 virtual 函数的默认参数将会变为基类的默认参数。关于这一点我们是不希望看到的。
+
+因此，我们最好**不要在派生类当中从新定义 virtual 函数的默认参数**。如果确实需要，我们可以将 virtual 函数放在 private 权限下，然后对外提供一个 public 的 non-virtual 函数接口。通过这个 non-virtual 函数调用 virtual 函数，并在 non-virtual 函数中写上默认参数，这样所有的派生类就都不会从新定义 virtual 函数的默认参数了。
 
