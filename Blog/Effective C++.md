@@ -1,3 +1,9 @@
+---
+title: Effective C++ 笔记
+tags: Effective C++
+categories: Study Notes
+---
+
 # 1.尽量以 const, enum, inline 替换 #define
 
 

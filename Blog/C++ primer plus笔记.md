@@ -1,3 +1,9 @@
+---
+title: C++ Primer Plus 笔记
+tags: C++ Primer Plus
+categories: Study Notes
+---
+
 # 函数
 
 
@@ -928,6 +934,10 @@ Test operator+(const Test& e1, const Test& e2)
    * `[]` 下标运算符
 
    * `->` 指针访问类成员运算符
+
+
+
+
 
 
 
